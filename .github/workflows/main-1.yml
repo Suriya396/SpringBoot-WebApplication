@@ -133,17 +133,22 @@ jobs:
           cache-to: type=gha,mode=max
 
 
-  # ─────────────────────────────────────────────
-  # JOB 5 : Trivy Security Scan
-  # ─────────────────────────────────────────────
   trivy:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
     needs: docker
 
     steps:
-      - name: Scan Docker Image with Trivy
-        uses: aquasecurity/trivy-action@0.29.0
+      # ✅ Login required for private DockerHub image
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      # ✅ Stable Trivy setup
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@latest
         with:
           image-ref: "${{ secrets.DOCKER_USER }}/myapp:latest"
           format: "table"
