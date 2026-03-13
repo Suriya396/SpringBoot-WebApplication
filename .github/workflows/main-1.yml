@@ -62,8 +62,9 @@ jobs:
       - name: Login DockerHub
         run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u ${{ secrets.DOCKER_USER }} --password-stdin
 
+      # ✅ PERMANENT FIX HERE
       - name: Build Image
-        run: docker build -t ${{ secrets.DOCKER_USER }}/myapp:latest .
+        run: docker build -f Dockerfile -t ${{ secrets.DOCKER_USER }}/myapp:latest .
 
       - name: Push Image
         run: docker push ${{ secrets.DOCKER_USER }}/myapp:latest
@@ -93,10 +94,11 @@ jobs:
 
       - uses: aws-actions/amazon-ecr-login@v2
 
+      # ✅ PERMANENT FIX HERE
       - name: Build & Push Image to ECR
         run: |
           IMAGE_URI=${{ secrets.ECR_REPOSITORY }}:latest
-          docker build -t $IMAGE_URI .
+          docker build -f Dockerfile -t $IMAGE_URI .
           docker push $IMAGE_URI
 
       - name: Deploy to ECS
