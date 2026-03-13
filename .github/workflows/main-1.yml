@@ -4,7 +4,6 @@ on:
   push:
     branches: ["main"]
 
-# ✅ Fix Node.js 20 warning (future-proof)
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -68,7 +67,7 @@ jobs:
 
 
   # -------------------------------
-  # 4️⃣ Docker Build & Push
+  # 4️⃣ Docker Build & Push (DockerHub)
   # -------------------------------
   docker:
     runs-on: ubuntu-latest
@@ -81,6 +80,7 @@ jobs:
         run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u ${{ secrets.DOCKER_USER }} --password-stdin
 
       - name: Build Image
+        working-directory: SpringBoot-WebApplication/SpringBoot-WebApplication
         run: docker build -t ${{ secrets.DOCKER_USER }}/myapp:latest .
 
       - name: Push Image
@@ -120,6 +120,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & Push Image to ECR
+        working-directory: SpringBoot-WebApplication/SpringBoot-WebApplication
         run: |
           IMAGE_URI=${{ secrets.ECR_REPOSITORY }}:latest
           docker build -t $IMAGE_URI .
