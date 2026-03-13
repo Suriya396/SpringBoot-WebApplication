@@ -1,128 +1,200 @@
-name: cicd Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
     branches: ["main"]
+  pull_request:
+    branches: ["main"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  JAVA_VERSION: '17'
 
 jobs:
 
-  # -------------------------------
-  # 1️⃣ Build + Test
-  # -------------------------------
+  # ─────────────────────────────────────────────
+  # JOB 1 : Build & Unit Test
+  # ─────────────────────────────────────────────
   build:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-java@v4
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
 
-      - run: mvn clean verify
+      - name: Build & Run Tests
+        run: mvn clean verify --batch-mode --no-transfer-progress
+
+      - name: Upload JAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 1
 
 
-  # -------------------------------
-  # 2️⃣ SonarCloud Scan
-  # -------------------------------
+  # ─────────────────────────────────────────────
+  # JOB 2 : SonarCloud Code Quality Scan
+  # ─────────────────────────────────────────────
   sonar:
+    name: SonarCloud Scan
     runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0   # full history needed for SonarCloud
 
-      - run: |
-          mvn org.sonarsource.scanner.maven:sonar-maven-plugin:4.0.0.4121:sonar \
-          -Dsonar.projectKey=Suriya396_SpringBoot-WebApplication \
-          -Dsonar.organization=suriya396 \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Run SonarCloud Analysis
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:4.0.0.4121:sonar \
+            -Dsonar.projectKey=Suriya396_SpringBoot-WebApplication \
+            -Dsonar.organization=suriya396 \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
 
-  # -------------------------------
-  # 3️⃣ Dependency Check
-  # -------------------------------
+  # ─────────────────────────────────────────────
+  # JOB 3 : OWASP Dependency Check
+  # ─────────────────────────────────────────────
   dependency-check:
+    name: OWASP Dependency Check
     runs-on: ubuntu-latest
     needs: sonar
 
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
 
-      - uses: dependency-check/Dependency-Check_Action@main
+      - name: Run Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
         with:
-          project: "my-app"
+          project: "SpringBoot-WebApplication"
           path: "."
           format: "HTML"
 
+      - name: Upload Dependency Check Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: reports/
+          retention-days: 7
 
-  # -------------------------------
-  # 4️⃣ Docker Build & Push (DockerHub)
-  # -------------------------------
+
+  # ─────────────────────────────────────────────
+  # JOB 4 : Build & Push to DockerHub
+  # ─────────────────────────────────────────────
   docker:
+    name: Build & Push to DockerHub
     runs-on: ubuntu-latest
     needs: dependency-check
 
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
 
-      - name: Login DockerHub
-        run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u ${{ secrets.DOCKER_USER }} --password-stdin
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
 
-      - name: Build Image
-        run: |
-          cd $GITHUB_WORKSPACE
-          docker build -f Dockerfile -t ${{ secrets.DOCKER_USER }}/myapp:latest .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Push Image
-        run: docker push ${{ secrets.DOCKER_USER }}/myapp:latest
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USER }}/myapp:latest
+            ${{ secrets.DOCKER_USER }}/myapp:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
 
-  # -------------------------------
-  # 5️⃣ Trivy Scan
-  # -------------------------------
+  # ─────────────────────────────────────────────
+  # JOB 5 : Trivy Security Scan
+  # ─────────────────────────────────────────────
   trivy:
+    name: Trivy Image Scan
     runs-on: ubuntu-latest
     needs: docker
 
     steps:
-      - name: Scan Image
-        uses: aquasecurity/trivy-action@master
+      - name: Scan Docker Image with Trivy
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: "${{ secrets.DOCKER_USER }}/myapp:latest"
+          format: "table"
+          exit-code: "0"
+          severity: "CRITICAL,HIGH"
 
 
-  # -------------------------------
-  # 6️⃣ Deploy to ECS
-  # -------------------------------
+  # ─────────────────────────────────────────────
+  # JOB 6 : Deploy to AWS ECR + ECS
+  # ─────────────────────────────────────────────
   deploy:
+    name: Deploy to AWS ECS
     runs-on: ubuntu-latest
     needs: trivy
 
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & Push Image to ECR
         run: |
-          IMAGE_URI=${{ secrets.ECR_REPOSITORY }}:latest
-          cd $GITHUB_WORKSPACE
-          docker build -f Dockerfile -t $IMAGE_URI .
+          IMAGE_URI=${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+          IMAGE_LATEST=${{ secrets.ECR_REPOSITORY }}:latest
+
+          docker build -f Dockerfile -t $IMAGE_URI -t $IMAGE_LATEST .
           docker push $IMAGE_URI
+          docker push $IMAGE_LATEST
+
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
       - name: Deploy to ECS
         run: |
           aws ecs update-service \
             --cluster ${{ secrets.ECS_CLUSTER }} \
             --service ${{ secrets.ECS_SERVICE }} \
-            --force-new-deployment
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for ECS Service Stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ secrets.ECS_CLUSTER }} \
+            --services ${{ secrets.ECS_SERVICE }} \
+            --region ${{ secrets.AWS_REGION }}
