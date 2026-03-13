@@ -64,6 +64,7 @@ jobs:
         with:
           project: "my-app"
           path: "."
+          format: "HTML"
 
 
   # -------------------------------
