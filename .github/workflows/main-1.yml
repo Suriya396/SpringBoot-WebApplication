@@ -39,8 +39,8 @@ jobs:
       - name: SonarCloud Scan
         run: |
           mvn org.sonarsource.scanner.maven:sonar-maven-plugin:4.0.0.4121:sonar \
-          -Dsonar.projectKey=suriyaprakash-p_SpringBoot-WebApplication \
-          -Dsonar.organization=suriyaprakash-p \
+          -Dsonar.projectKey=Suriya396_SpringBoot-WebApplication \
+          -Dsonar.organization=suriya396 \
           -Dsonar.host.url=https://sonarcloud.io \
           -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
