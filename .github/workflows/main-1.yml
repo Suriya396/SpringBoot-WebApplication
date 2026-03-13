@@ -4,6 +4,10 @@ on:
   push:
     branches: ["main"]
 
+# ✅ Fix Node.js 20 warning (future-proof)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
 
   # -------------------------------
@@ -114,7 +118,7 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & Push Image
+      - name: Build & Push Image to ECR
         run: |
           IMAGE_URI=${{ secrets.ECR_REPOSITORY }}:latest
           docker build -t $IMAGE_URI .
